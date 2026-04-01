@@ -1,0 +1,21 @@
+# Maven
+
+target/
+*.log
+
+# IDE
+
+.vscode/
+.idea/
+
+# OS
+
+.DS_Store
+
+# Environment
+
+application.properties
+
+# Node (if later used)
+
+node_modules/
