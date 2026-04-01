@@ -13,7 +13,10 @@ public class Account {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // ✅ unique + auto-generated server-side; client never sends this
+    @Column(unique = true, nullable = false)
     private String accountNumber;
+
     private double balance;
 
     @ManyToOne

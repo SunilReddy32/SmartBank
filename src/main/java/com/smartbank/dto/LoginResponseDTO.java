@@ -7,4 +7,5 @@ public class LoginResponseDTO {
     private String message;
     private String email;
     private String token;
+    private String role;   // ✅ NEW: "ROLE_USER" or "ROLE_ADMIN"
 }

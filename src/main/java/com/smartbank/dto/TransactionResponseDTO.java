@@ -1,6 +1,7 @@
 package com.smartbank.dto;
 
 import lombok.Data;
+import java.time.LocalDateTime;
 
 @Data
 public class TransactionResponseDTO {
@@ -8,4 +9,7 @@ public class TransactionResponseDTO {
     private Double amount;
     private String type;
     private Long accountId;
+
+    // ✅ NEW: timestamp returned in every transaction response
+    private LocalDateTime createdAt;
 }

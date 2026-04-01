@@ -1,1 +1,14 @@
-
+# Environment variables - NEVER commit this
+.env
+ 
+# Build output
+target/
+ 
+# IDE files
+.idea/
+*.iml
+.vscode/
+ 
+# Logs
+*.log
+ 
