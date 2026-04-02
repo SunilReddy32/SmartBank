@@ -13,7 +13,6 @@ public class Account {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ✅ unique + auto-generated server-side; client never sends this
     @Column(unique = true, nullable = false)
     private String accountNumber;
 
@@ -21,4 +20,13 @@ public class Account {
 
     @ManyToOne
     private User user;
+
+    // ✅ FEATURE: Account type — SAVINGS earns interest, CURRENT does not
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AccountType accountType = AccountType.SAVINGS;
+
+    // ✅ FEATURE: Transaction PIN — BCrypt hashed, required before any debit/transfer
+    // null means PIN not yet set — user must set it before transacting
+    private String transactionPin;
 }

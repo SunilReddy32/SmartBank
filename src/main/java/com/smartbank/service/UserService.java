@@ -25,16 +25,15 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
-    // 🔐 Helper: get the currently logged-in user from JWT
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String email = auth.getName();
-        return userRepository.findByEmail(email)
+        return userRepository.findByEmail(auth.getName())
                 .orElseThrow(() -> new RuntimeException("Logged-in user not found"));
     }
 
-    // ✅ REGISTER
+    // ✅ REGISTER + welcome email
     public UserResponseDTO register(RegisterRequestDTO request) {
 
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -45,12 +44,16 @@ public class UserService {
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        // role defaults to ROLE_USER via entity field initializer
 
-        return toDTO(userRepository.save(user));
+        UserResponseDTO response = toDTO(userRepository.save(user));
+
+        // 📧 Send welcome email after successful registration
+        emailService.sendWelcomeEmail(user.getEmail(), user.getName());
+
+        return response;
     }
 
-    // ✅ LOGIN
+    // ✅ LOGIN + login alert email
     public LoginResponseDTO login(LoginRequestDTO request) {
 
         User user = userRepository.findByEmail(request.getEmail())
@@ -66,27 +69,25 @@ public class UserService {
         response.setMessage("Login successful");
         response.setEmail(user.getEmail());
         response.setToken(token);
-        response.setRole(user.getRole().name()); // ✅ BUG FIX: was never set before
+        response.setRole(user.getRole().name());
+
+        // 📧 Send login notification email
+        emailService.sendLoginNotification(user.getEmail(), user.getName());
 
         return response;
     }
 
-    // ✅ GET USER PROFILE — only logged-in user can fetch their own profile
+    // ✅ GET USER PROFILE
     public UserResponseDTO getUser(Long userId) {
-
         User loggedIn = getLoggedInUser();
-
         if (!loggedIn.getId().equals(userId)) {
             throw new RuntimeException("Unauthorized: You can only view your own profile");
         }
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found"));
-
-        return toDTO(user);
+        return toDTO(userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found")));
     }
 
-    // ✅ UPDATE USER — with ownership check
+    // ✅ UPDATE USER
     @Transactional
     public UserResponseDTO updateUser(Long userId, UpdateUserRequestDTO request) {
 
@@ -101,7 +102,6 @@ public class UserService {
         if (request.getName() != null && !request.getName().isBlank()) {
             user.setName(request.getName());
         }
-
         if (request.getEmail() != null && !request.getEmail().isBlank()) {
             if (userRepository.existsByEmail(request.getEmail())
                     && !user.getEmail().equals(request.getEmail())) {
@@ -109,7 +109,6 @@ public class UserService {
             }
             user.setEmail(request.getEmail());
         }
-
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             user.setPassword(passwordEncoder.encode(request.getPassword()));
         }
@@ -117,13 +116,12 @@ public class UserService {
         return toDTO(userRepository.save(user));
     }
 
-    // 🔧 Helper: map User → UserResponseDTO
     private UserResponseDTO toDTO(User user) {
         UserResponseDTO response = new UserResponseDTO();
         response.setId(user.getId());
         response.setName(user.getName());
         response.setEmail(user.getEmail());
-        response.setRole(user.getRole().name()); // ✅ BUG FIX: was never set before
+        response.setRole(user.getRole().name());
         return response;
     }
 }

@@ -23,6 +23,7 @@ public class TransactionController {
     private final TransactionService transactionService;
 
     // POST /transactions/deposit/{accountId}
+    // Body: { "amount": 5000 }  ← no PIN needed for deposits
     @PostMapping("/deposit/{accountId}")
     public TransactionResponseDTO deposit(
             @PathVariable Long accountId,
@@ -31,34 +32,37 @@ public class TransactionController {
     }
 
     // POST /transactions/withdraw/{accountId}
+    // Body: { "amount": 2000, "pin": "1234" }  ← PIN required
     @PostMapping("/withdraw/{accountId}")
     public TransactionResponseDTO withdraw(
             @PathVariable Long accountId,
             @Valid @RequestBody TransactionRequestDTO request) {
-        return transactionService.withdraw(accountId, request.getAmount());
+        return transactionService.withdraw(accountId, request.getAmount(), request.getPin());
     }
 
-    // POST /transactions/transfer — transfer using internal account IDs (kept for compatibility)
+    // POST /transactions/transfer
+    // Body: { "fromAccountId": 1, "toAccountId": 2, "amount": 1000, "pin": "1234" }
     @PostMapping("/transfer")
     public TransactionResponseDTO transfer(
             @Valid @RequestBody TransferRequestDTO request) {
         return transactionService.transfer(
                 request.getFromAccountId(),
                 request.getToAccountId(),
-                request.getAmount()
+                request.getAmount(),
+                request.getPin()
         );
     }
 
-    // ✅ NEW: POST /transactions/transfer/by-account-number
-    // Body: { "fromAccountNumber": "1234567890", "toAccountNumber": "0987654321", "amount": 500 }
-    // This is the real-world way users transfer — using the visible account number
+    // POST /transactions/transfer/by-account-number
+    // Body: { "fromAccountNumber": "1234567890", "toAccountNumber": "0987654321", "amount": 500, "pin": "1234" }
     @PostMapping("/transfer/by-account-number")
     public TransactionResponseDTO transferByAccountNumber(
             @Valid @RequestBody TransferByAccountNumberRequestDTO request) {
         return transactionService.transferByAccountNumber(
                 request.getFromAccountNumber(),
                 request.getToAccountNumber(),
-                request.getAmount()
+                request.getAmount(),
+                request.getPin()
         );
     }
 

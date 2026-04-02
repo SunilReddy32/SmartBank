@@ -31,23 +31,22 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
+    private final AccountService accountService;   // for PIN validation
+    private final EmailService emailService;        // for notifications
 
-    // 🔐 Get logged-in user
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return userRepository.findByEmail(auth.getName())
                 .orElseThrow(() -> new RuntimeException("User not found"));
     }
 
-    // 🔐 Validate account belongs to logged-in user
-    private void validateAccountOwnership(Account account) {
+    private void validateOwnership(Account account) {
         User user = getLoggedInUser();
         if (!account.getUser().getId().equals(user.getId())) {
             throw new RuntimeException("Unauthorized access to this account");
         }
     }
 
-    // 🔧 Map Transaction → DTO
     private TransactionResponseDTO toDTO(Transaction tx) {
         TransactionResponseDTO dto = new TransactionResponseDTO();
         dto.setTransactionId(tx.getId());
@@ -58,12 +57,12 @@ public class TransactionService {
         return dto;
     }
 
-    // ✅ DEPOSIT
+    // ✅ DEPOSIT — no PIN required for deposits (only debits need PIN)
     @Transactional
     public TransactionResponseDTO deposit(Long accountId, double amount) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found"));
-        validateAccountOwnership(account);
+        validateOwnership(account);
 
         account.setBalance(account.getBalance() + amount);
         accountRepository.save(account);
@@ -72,16 +71,29 @@ public class TransactionService {
         tx.setType(TransactionType.DEPOSIT);
         tx.setAmount(amount);
         tx.setAccount(account);
+        Transaction saved = transactionRepository.save(tx);
 
-        return toDTO(transactionRepository.save(tx));
+        // 📧 Email notification
+        emailService.sendDepositEmail(
+                account.getUser().getEmail(),
+                account.getUser().getName(),
+                account.getAccountNumber(),
+                amount,
+                account.getBalance()
+        );
+
+        return toDTO(saved);
     }
 
-    // ✅ WITHDRAW
+    // ✅ WITHDRAW — PIN required
     @Transactional
-    public TransactionResponseDTO withdraw(Long accountId, double amount) {
+    public TransactionResponseDTO withdraw(Long accountId, double amount, String pin) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found"));
-        validateAccountOwnership(account);
+        validateOwnership(account);
+
+        // 🔐 Validate transaction PIN before proceeding
+        accountService.validateTransactionPin(account, pin);
 
         if (account.getBalance() < amount) {
             throw new InsufficientBalanceException("Insufficient balance");
@@ -94,41 +106,54 @@ public class TransactionService {
         tx.setType(TransactionType.WITHDRAW);
         tx.setAmount(amount);
         tx.setAccount(account);
+        Transaction saved = transactionRepository.save(tx);
 
-        return toDTO(transactionRepository.save(tx));
+        // 📧 Email notification
+        emailService.sendWithdrawalEmail(
+                account.getUser().getEmail(),
+                account.getUser().getName(),
+                account.getAccountNumber(),
+                amount,
+                account.getBalance()
+        );
+
+        return toDTO(saved);
     }
 
-    // ✅ TRANSFER BY ACCOUNT ID (original — kept for backward compatibility)
+    // ✅ TRANSFER BY ACCOUNT ID — PIN required
     @Transactional
-    public TransactionResponseDTO transfer(Long fromAccountId, Long toAccountId, double amount) {
+    public TransactionResponseDTO transfer(Long fromAccountId, Long toAccountId,
+                                            double amount, String pin) {
         Account fromAccount = accountRepository.findById(fromAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Sender account not found"));
         Account toAccount = accountRepository.findById(toAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Receiver account not found"));
 
-        return executeTransfer(fromAccount, toAccount, amount);
+        return executeTransfer(fromAccount, toAccount, amount, pin);
     }
 
-    // ✅ NEW: TRANSFER BY ACCOUNT NUMBER (real-world banking style)
-    // Users enter the visible 10-digit account number, not an internal DB id
+    // ✅ TRANSFER BY ACCOUNT NUMBER — PIN required
     @Transactional
-    public TransactionResponseDTO transferByAccountNumber(
-            String fromAccountNumber, String toAccountNumber, double amount) {
-
+    public TransactionResponseDTO transferByAccountNumber(String fromAccountNumber,
+                                                           String toAccountNumber,
+                                                           double amount, String pin) {
         Account fromAccount = accountRepository.findByAccountNumber(fromAccountNumber)
                 .orElseThrow(() -> new AccountNotFoundException(
                         "Sender account not found: " + fromAccountNumber));
-
         Account toAccount = accountRepository.findByAccountNumber(toAccountNumber)
                 .orElseThrow(() -> new AccountNotFoundException(
                         "Receiver account not found: " + toAccountNumber));
 
-        return executeTransfer(fromAccount, toAccount, amount);
+        return executeTransfer(fromAccount, toAccount, amount, pin);
     }
 
-    // 🔧 Shared transfer logic — avoids duplication between both transfer methods
-    private TransactionResponseDTO executeTransfer(Account fromAccount, Account toAccount, double amount) {
-        validateAccountOwnership(fromAccount);
+    // 🔧 Shared transfer logic
+    private TransactionResponseDTO executeTransfer(Account fromAccount, Account toAccount,
+                                                    double amount, String pin) {
+        validateOwnership(fromAccount);
+
+        // 🔐 Validate PIN before any money moves
+        accountService.validateTransactionPin(fromAccount, pin);
 
         if (fromAccount.getAccountNumber().equals(toAccount.getAccountNumber())) {
             throw new RuntimeException("Cannot transfer to the same account");
@@ -143,19 +168,39 @@ public class TransactionService {
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
 
-        // 📤 Debit record — appears in sender's history
+        // 📤 Debit record — sender's history
         Transaction debitTx = new Transaction();
         debitTx.setType(TransactionType.TRANSFER);
         debitTx.setAmount(amount);
         debitTx.setAccount(fromAccount);
         Transaction savedDebit = transactionRepository.save(debitTx);
 
-        // 📥 Credit record — appears in receiver's history
+        // 📥 Credit record — receiver's history
         Transaction creditTx = new Transaction();
         creditTx.setType(TransactionType.TRANSFER);
         creditTx.setAmount(amount);
         creditTx.setAccount(toAccount);
         transactionRepository.save(creditTx);
+
+        // 📧 Email sender
+        emailService.sendTransferSentEmail(
+                fromAccount.getUser().getEmail(),
+                fromAccount.getUser().getName(),
+                fromAccount.getAccountNumber(),
+                toAccount.getAccountNumber(),
+                amount,
+                fromAccount.getBalance()
+        );
+
+        // 📧 Email receiver
+        emailService.sendTransferReceivedEmail(
+                toAccount.getUser().getEmail(),
+                toAccount.getUser().getName(),
+                fromAccount.getAccountNumber(),
+                toAccount.getAccountNumber(),
+                amount,
+                toAccount.getBalance()
+        );
 
         return toDTO(savedDebit);
     }
@@ -164,7 +209,7 @@ public class TransactionService {
     public List<TransactionResponseDTO> getTransactions(Long accountId, String type, Pageable pageable) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found"));
-        validateAccountOwnership(account);
+        validateOwnership(account);
 
         Page<Transaction> page = (type != null)
                 ? transactionRepository.findByAccountAndType(account, type, pageable)

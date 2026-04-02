@@ -15,4 +15,8 @@ public class TransferRequestDTO {
     @NotNull(message = "Amount is required")
     @Positive(message = "Amount must be greater than 0")
     private Double amount;
+
+    // ✅ FEATURE: PIN required for all transfers
+    @NotBlank(message = "Transaction PIN is required for transfers")
+    private String pin;
 }
