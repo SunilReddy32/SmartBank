@@ -45,10 +45,9 @@ public class UserService {
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
+        // role defaults to ROLE_USER via entity field initializer
 
-        User savedUser = userRepository.save(user);
-
-        return toDTO(savedUser);
+        return toDTO(userRepository.save(user));
     }
 
     // ✅ LOGIN
@@ -67,12 +66,12 @@ public class UserService {
         response.setMessage("Login successful");
         response.setEmail(user.getEmail());
         response.setToken(token);
+        response.setRole(user.getRole().name()); // ✅ BUG FIX: was never set before
 
         return response;
     }
 
-    // ✅ NEW: GET USER PROFILE — returns the profile of any user by ID
-    // Only the logged-in user can fetch their own profile
+    // ✅ GET USER PROFILE — only logged-in user can fetch their own profile
     public UserResponseDTO getUser(Long userId) {
 
         User loggedIn = getLoggedInUser();
@@ -87,13 +86,11 @@ public class UserService {
         return toDTO(user);
     }
 
-    // ✅ UPDATE USER — with ownership check (BUG FIX: any user could update any other user before)
+    // ✅ UPDATE USER — with ownership check
     @Transactional
     public UserResponseDTO updateUser(Long userId, UpdateUserRequestDTO request) {
 
-        // 🔐 Ownership check — logged-in user can only update their OWN profile
         User loggedIn = getLoggedInUser();
-
         if (!loggedIn.getId().equals(userId)) {
             throw new RuntimeException("Unauthorized: You can only update your own profile");
         }
@@ -117,17 +114,16 @@ public class UserService {
             user.setPassword(passwordEncoder.encode(request.getPassword()));
         }
 
-        User updatedUser = userRepository.save(user);
-
-        return toDTO(updatedUser);
+        return toDTO(userRepository.save(user));
     }
 
-    // 🔧 Helper: convert User entity → UserResponseDTO
+    // 🔧 Helper: map User → UserResponseDTO
     private UserResponseDTO toDTO(User user) {
         UserResponseDTO response = new UserResponseDTO();
         response.setId(user.getId());
         response.setName(user.getName());
         response.setEmail(user.getEmail());
+        response.setRole(user.getRole().name()); // ✅ BUG FIX: was never set before
         return response;
     }
 }
