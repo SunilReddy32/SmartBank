@@ -34,6 +34,7 @@ public class TransactionService {
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
 
+    // 🔐 Get logged-in user
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String email = auth.getName();
@@ -41,6 +42,7 @@ public class TransactionService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
     }
 
+    // 🔐 Validate account ownership
     private void validateAccountOwnership(Account account) {
         User user = getLoggedInUser();
         if (!account.getUser().getId().equals(user.getId())) {
@@ -48,16 +50,18 @@ public class TransactionService {
         }
     }
 
-    private TransactionResponseDTO toDTO(Transaction tx) {
+    // 🔧 Helper: map Transaction → DTO (now includes createdAt)
+    private TransactionResponseDTO toDTO(Transaction tx, Long accountId) {
         TransactionResponseDTO dto = new TransactionResponseDTO();
         dto.setTransactionId(tx.getId());
         dto.setType(tx.getType().name());
         dto.setAmount(tx.getAmount());
-        dto.setAccountId(tx.getAccount().getId());
-        dto.setCreatedAt(tx.getCreatedAt());   // ✅ NEW: timestamp
+        dto.setAccountId(accountId);
+        dto.setCreatedAt(tx.getCreatedAt()); // ✅ NEW: timestamp included
         return dto;
     }
 
+    // ✅ DEPOSIT
     @Transactional
     public TransactionResponseDTO deposit(Long accountId, double amount) {
 
@@ -74,9 +78,11 @@ public class TransactionService {
         transaction.setAmount(amount);
         transaction.setAccount(account);
 
-        return toDTO(transactionRepository.save(transaction));
+        Transaction saved = transactionRepository.save(transaction);
+        return toDTO(saved, account.getId());
     }
 
+    // ✅ WITHDRAW
     @Transactional
     public TransactionResponseDTO withdraw(Long accountId, double amount) {
 
@@ -97,10 +103,11 @@ public class TransactionService {
         transaction.setAmount(amount);
         transaction.setAccount(account);
 
-        return toDTO(transactionRepository.save(transaction));
+        Transaction saved = transactionRepository.save(transaction);
+        return toDTO(saved, account.getId());
     }
 
-    // ✅ @Transactional + dual recording (from previous fix)
+    // ✅ TRANSFER — @Transactional + dual recording (from previous fix)
     @Transactional
     public TransactionResponseDTO transfer(Long fromAccountId, Long toAccountId, double amount) {
 
@@ -122,23 +129,24 @@ public class TransactionService {
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
 
-        // 📤 Sender record
+        // 📤 Debit — sender's history
         Transaction debitTx = new Transaction();
         debitTx.setType(TransactionType.TRANSFER);
         debitTx.setAmount(amount);
         debitTx.setAccount(fromAccount);
-        Transaction savedDebitTx = transactionRepository.save(debitTx);
+        Transaction savedDebit = transactionRepository.save(debitTx);
 
-        // 📥 Receiver record
+        // 📥 Credit — receiver's history
         Transaction creditTx = new Transaction();
         creditTx.setType(TransactionType.TRANSFER);
         creditTx.setAmount(amount);
         creditTx.setAccount(toAccount);
         transactionRepository.save(creditTx);
 
-        return toDTO(savedDebitTx);
+        return toDTO(savedDebit, fromAccount.getId());
     }
 
+    // ✅ GET TRANSACTIONS WITH FILTER + PAGINATION
     public List<TransactionResponseDTO> getTransactions(Long accountId, String type, Pageable pageable) {
 
         Account account = accountRepository.findById(accountId)
@@ -146,13 +154,17 @@ public class TransactionService {
 
         validateAccountOwnership(account);
 
-        Page<Transaction> transactionPage = (type != null)
-                ? transactionRepository.findByAccountAndType(account, type, pageable)
-                : transactionRepository.findByAccount(account, pageable);
+        Page<Transaction> transactionPage;
+
+        if (type != null) {
+            transactionPage = transactionRepository.findByAccountAndType(account, type, pageable);
+        } else {
+            transactionPage = transactionRepository.findByAccount(account, pageable);
+        }
 
         List<TransactionResponseDTO> responseList = new ArrayList<>();
         for (Transaction tx : transactionPage.getContent()) {
-            responseList.add(toDTO(tx));
+            responseList.add(toDTO(tx, accountId));
         }
 
         return responseList;

@@ -16,6 +16,16 @@ public class UserController {
 
     private final UserService userService;
 
+    // ✅ NEW: GET USER PROFILE
+    // Example: GET /users/3
+    // Only the logged-in user can fetch their own profile
+    @GetMapping("/{userId}")
+    public UserResponseDTO getUser(@PathVariable Long userId) {
+        return userService.getUser(userId);
+    }
+
+    // ✅ UPDATE USER — now with ownership check (BUG FIX)
+    // Users can only update their own profile
     @PutMapping("/{userId}")
     public UserResponseDTO updateUser(
             @PathVariable Long userId,

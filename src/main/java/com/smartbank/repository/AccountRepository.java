@@ -7,6 +7,10 @@ import com.smartbank.entity.User;
 import java.util.List;
 
 public interface AccountRepository extends JpaRepository<Account, Long> {
-    boolean existsByAccountNumber(String accountNumber);
+
+    // ✅ NEW: Get all accounts belonging to a user
     List<Account> findByUser(User user);
+
+    // ✅ NEW: Check if an auto-generated account number already exists (collision check)
+    boolean existsByAccountNumber(String accountNumber);
 }

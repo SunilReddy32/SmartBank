@@ -1,12 +1,16 @@
 package com.smartbank.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import com.smartbank.repository.UserRepository;
 import com.smartbank.security.JwtUtil;
 import com.smartbank.entity.User;
-import com.smartbank.entity.Role;
 import com.smartbank.exception.DuplicateEmailException;
 import com.smartbank.exception.UserNotFoundException;
 import com.smartbank.dto.LoginRequestDTO;
@@ -15,8 +19,6 @@ import com.smartbank.dto.RegisterRequestDTO;
 import com.smartbank.dto.UpdateUserRequestDTO;
 import com.smartbank.dto.UserResponseDTO;
 
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -24,6 +26,15 @@ public class UserService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
 
+    // 🔐 Helper: get the currently logged-in user from JWT
+    private User getLoggedInUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Logged-in user not found"));
+    }
+
+    // ✅ REGISTER
     public UserResponseDTO register(RegisterRequestDTO request) {
 
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -34,34 +45,58 @@ public class UserService {
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setRole(Role.ROLE_USER);   // ✅ always ROLE_USER on self-registration
 
         User savedUser = userRepository.save(user);
+
         return toDTO(savedUser);
     }
 
+    // ✅ LOGIN
     public LoginResponseDTO login(LoginRequestDTO request) {
 
         User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new RuntimeException("Invalid password");
         }
 
-        // ✅ Role is now embedded in the JWT so Spring Security can enforce it
         String token = JwtUtil.generateToken(user.getEmail(), user.getRole().name());
 
         LoginResponseDTO response = new LoginResponseDTO();
         response.setMessage("Login successful");
         response.setEmail(user.getEmail());
         response.setToken(token);
-        response.setRole(user.getRole().name());   // ✅ frontend can redirect to admin/user dashboard
 
         return response;
     }
 
+    // ✅ NEW: GET USER PROFILE — returns the profile of any user by ID
+    // Only the logged-in user can fetch their own profile
+    public UserResponseDTO getUser(Long userId) {
+
+        User loggedIn = getLoggedInUser();
+
+        if (!loggedIn.getId().equals(userId)) {
+            throw new RuntimeException("Unauthorized: You can only view your own profile");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        return toDTO(user);
+    }
+
+    // ✅ UPDATE USER — with ownership check (BUG FIX: any user could update any other user before)
+    @Transactional
     public UserResponseDTO updateUser(Long userId, UpdateUserRequestDTO request) {
+
+        // 🔐 Ownership check — logged-in user can only update their OWN profile
+        User loggedIn = getLoggedInUser();
+
+        if (!loggedIn.getId().equals(userId)) {
+            throw new RuntimeException("Unauthorized: You can only update your own profile");
+        }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
@@ -82,15 +117,17 @@ public class UserService {
             user.setPassword(passwordEncoder.encode(request.getPassword()));
         }
 
-        return toDTO(userRepository.save(user));
+        User updatedUser = userRepository.save(user);
+
+        return toDTO(updatedUser);
     }
 
+    // 🔧 Helper: convert User entity → UserResponseDTO
     private UserResponseDTO toDTO(User user) {
         UserResponseDTO response = new UserResponseDTO();
         response.setId(user.getId());
         response.setName(user.getName());
         response.setEmail(user.getEmail());
-        response.setRole(user.getRole().name());   // ✅ expose role
         return response;
     }
 }

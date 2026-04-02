@@ -10,6 +10,6 @@ public class TransactionResponseDTO {
     private String type;
     private Long accountId;
 
-    // ✅ NEW: timestamp returned in every transaction response
+    // ✅ NEW: Timestamp now returned in every transaction response
     private LocalDateTime createdAt;
 }

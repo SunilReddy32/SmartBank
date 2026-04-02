@@ -21,11 +21,11 @@ public class Transaction {
 
     private double amount;
 
-    @ManyToOne
-    private Account account;
-
-    // ✅ NEW: auto-stamped when the row is first inserted; never updated
+    // ✅ NEW: Auto-set by Hibernate on insert — never null, never manually set
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
+
+    @ManyToOne
+    private Account account;
 }
