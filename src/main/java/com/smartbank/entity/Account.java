@@ -21,12 +21,18 @@ public class Account {
     @ManyToOne
     private User user;
 
-    // ✅ FEATURE: Account type — SAVINGS earns interest, CURRENT does not
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AccountType accountType = AccountType.SAVINGS;
 
-    // ✅ FEATURE: Transaction PIN — BCrypt hashed, required before any debit/transfer
-    // null means PIN not yet set — user must set it before transacting
     private String transactionPin;
+
+    // ✅ FEATURE: Daily transaction limits
+    // 0.0 means no limit set — unlimited
+    // Default: ₹50,000/day for withdrawals, ₹1,00,000/day for transfers
+    @Column(nullable = false)
+    private double dailyWithdrawalLimit = 50000.0;
+
+    @Column(nullable = false)
+    private double dailyTransferLimit = 100000.0;
 }

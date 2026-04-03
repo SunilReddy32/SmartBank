@@ -1,26 +1,22 @@
 package com.smartbank.service;
 
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import lombok.RequiredArgsConstructor;
-
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-
-import com.smartbank.repository.UserRepository;
-import com.smartbank.repository.TransactionRepository;
-import com.smartbank.repository.AccountRepository;
 import com.smartbank.dto.TransactionResponseDTO;
-import com.smartbank.entity.Transaction;
-import com.smartbank.entity.TransactionType;
-import com.smartbank.entity.Account;
-import com.smartbank.entity.User;
+import com.smartbank.entity.*;
 import com.smartbank.exception.AccountNotFoundException;
 import com.smartbank.exception.InsufficientBalanceException;
-
+import com.smartbank.repository.AccountRepository;
+import com.smartbank.repository.TransactionRepository;
+import com.smartbank.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,8 +27,8 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
-    private final AccountService accountService;   // for PIN validation
-    private final EmailService emailService;        // for notifications
+    private final AccountService accountService;
+    private final EmailService emailService;
 
     private User getLoggedInUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -47,6 +43,32 @@ public class TransactionService {
         }
     }
 
+    // ✅ FEATURE: Check daily limit before debit operations
+    private void checkDailyLimit(Account account, double amount, TransactionType type) {
+        if (type != TransactionType.WITHDRAW && type != TransactionType.TRANSFER) return;
+
+        // Get start of today (midnight)
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+
+        double todayTotal = transactionRepository.sumAmountByAccountAndTypeAndCreatedAtAfter(
+                account, type, startOfDay);
+
+        double limit = (type == TransactionType.WITHDRAW)
+                ? account.getDailyWithdrawalLimit()
+                : account.getDailyTransferLimit();
+
+        // 0 = no limit configured
+        if (limit <= 0) return;
+
+        if (todayTotal + amount > limit) {
+            double remaining = limit - todayTotal;
+            throw new RuntimeException(
+                "Daily " + type.name().toLowerCase() + " limit of ₹" + limit + " exceeded. " +
+                "Already transacted: ₹" + todayTotal + ". " +
+                "Remaining today: ₹" + Math.max(0, remaining));
+        }
+    }
+
     private TransactionResponseDTO toDTO(Transaction tx) {
         TransactionResponseDTO dto = new TransactionResponseDTO();
         dto.setTransactionId(tx.getId());
@@ -57,7 +79,7 @@ public class TransactionService {
         return dto;
     }
 
-    // ✅ DEPOSIT — no PIN required for deposits (only debits need PIN)
+    // ✅ DEPOSIT — no PIN, no daily limit (deposits are always allowed)
     @Transactional
     public TransactionResponseDTO deposit(Long accountId, double amount) {
         Account account = accountRepository.findById(accountId)
@@ -73,27 +95,25 @@ public class TransactionService {
         tx.setAccount(account);
         Transaction saved = transactionRepository.save(tx);
 
-        // 📧 Email notification
-        emailService.sendDepositEmail(
-                account.getUser().getEmail(),
-                account.getUser().getName(),
-                account.getAccountNumber(),
-                amount,
-                account.getBalance()
-        );
+        emailService.sendDepositEmail(account.getUser().getEmail(),
+                account.getUser().getName(), account.getAccountNumber(),
+                amount, account.getBalance());
 
         return toDTO(saved);
     }
 
-    // ✅ WITHDRAW — PIN required
+    // ✅ WITHDRAW — PIN required + daily limit check
     @Transactional
     public TransactionResponseDTO withdraw(Long accountId, double amount, String pin) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found"));
         validateOwnership(account);
 
-        // 🔐 Validate transaction PIN before proceeding
+        // 🔐 PIN validation
         accountService.validateTransactionPin(account, pin);
+
+        // 📊 Daily limit check
+        checkDailyLimit(account, amount, TransactionType.WITHDRAW);
 
         if (account.getBalance() < amount) {
             throw new InsufficientBalanceException("Insufficient balance");
@@ -108,19 +128,14 @@ public class TransactionService {
         tx.setAccount(account);
         Transaction saved = transactionRepository.save(tx);
 
-        // 📧 Email notification
-        emailService.sendWithdrawalEmail(
-                account.getUser().getEmail(),
-                account.getUser().getName(),
-                account.getAccountNumber(),
-                amount,
-                account.getBalance()
-        );
+        emailService.sendWithdrawalEmail(account.getUser().getEmail(),
+                account.getUser().getName(), account.getAccountNumber(),
+                amount, account.getBalance());
 
         return toDTO(saved);
     }
 
-    // ✅ TRANSFER BY ACCOUNT ID — PIN required
+    // ✅ TRANSFER BY ACCOUNT ID
     @Transactional
     public TransactionResponseDTO transfer(Long fromAccountId, Long toAccountId,
                                             double amount, String pin) {
@@ -128,32 +143,30 @@ public class TransactionService {
                 .orElseThrow(() -> new AccountNotFoundException("Sender account not found"));
         Account toAccount = accountRepository.findById(toAccountId)
                 .orElseThrow(() -> new AccountNotFoundException("Receiver account not found"));
-
         return executeTransfer(fromAccount, toAccount, amount, pin);
     }
 
-    // ✅ TRANSFER BY ACCOUNT NUMBER — PIN required
+    // ✅ TRANSFER BY ACCOUNT NUMBER
     @Transactional
     public TransactionResponseDTO transferByAccountNumber(String fromAccountNumber,
                                                            String toAccountNumber,
                                                            double amount, String pin) {
         Account fromAccount = accountRepository.findByAccountNumber(fromAccountNumber)
-                .orElseThrow(() -> new AccountNotFoundException(
-                        "Sender account not found: " + fromAccountNumber));
+                .orElseThrow(() -> new AccountNotFoundException("Sender account not found: " + fromAccountNumber));
         Account toAccount = accountRepository.findByAccountNumber(toAccountNumber)
-                .orElseThrow(() -> new AccountNotFoundException(
-                        "Receiver account not found: " + toAccountNumber));
-
+                .orElseThrow(() -> new AccountNotFoundException("Receiver account not found: " + toAccountNumber));
         return executeTransfer(fromAccount, toAccount, amount, pin);
     }
 
-    // 🔧 Shared transfer logic
     private TransactionResponseDTO executeTransfer(Account fromAccount, Account toAccount,
                                                     double amount, String pin) {
         validateOwnership(fromAccount);
 
-        // 🔐 Validate PIN before any money moves
+        // 🔐 PIN validation
         accountService.validateTransactionPin(fromAccount, pin);
+
+        // 📊 Daily limit check
+        checkDailyLimit(fromAccount, amount, TransactionType.TRANSFER);
 
         if (fromAccount.getAccountNumber().equals(toAccount.getAccountNumber())) {
             throw new RuntimeException("Cannot transfer to the same account");
@@ -168,39 +181,25 @@ public class TransactionService {
         accountRepository.save(fromAccount);
         accountRepository.save(toAccount);
 
-        // 📤 Debit record — sender's history
         Transaction debitTx = new Transaction();
         debitTx.setType(TransactionType.TRANSFER);
         debitTx.setAmount(amount);
         debitTx.setAccount(fromAccount);
         Transaction savedDebit = transactionRepository.save(debitTx);
 
-        // 📥 Credit record — receiver's history
         Transaction creditTx = new Transaction();
         creditTx.setType(TransactionType.TRANSFER);
         creditTx.setAmount(amount);
         creditTx.setAccount(toAccount);
         transactionRepository.save(creditTx);
 
-        // 📧 Email sender
-        emailService.sendTransferSentEmail(
-                fromAccount.getUser().getEmail(),
-                fromAccount.getUser().getName(),
-                fromAccount.getAccountNumber(),
-                toAccount.getAccountNumber(),
-                amount,
-                fromAccount.getBalance()
-        );
+        emailService.sendTransferSentEmail(fromAccount.getUser().getEmail(),
+                fromAccount.getUser().getName(), fromAccount.getAccountNumber(),
+                toAccount.getAccountNumber(), amount, fromAccount.getBalance());
 
-        // 📧 Email receiver
-        emailService.sendTransferReceivedEmail(
-                toAccount.getUser().getEmail(),
-                toAccount.getUser().getName(),
-                fromAccount.getAccountNumber(),
-                toAccount.getAccountNumber(),
-                amount,
-                toAccount.getBalance()
-        );
+        emailService.sendTransferReceivedEmail(toAccount.getUser().getEmail(),
+                toAccount.getUser().getName(), fromAccount.getAccountNumber(),
+                toAccount.getAccountNumber(), amount, toAccount.getBalance());
 
         return toDTO(savedDebit);
     }
