@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────
+# Pull Request Quality Check
+# Runs on every PR — ensures code quality before merging
+# ─────────────────────────────────────────────────────────────
+
+name: PR Quality Check
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  backend-check:
+    name: Backend Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # Compile only — fast check that code compiles
+      - name: Compile check
+        run: mvn compile -B
+        env:
+          DB_PASSWORD: dummy
+          MAIL_USERNAME: dummy@gmail.com
+          MAIL_PASSWORD: dummy
+
+      # Run tests
+      - name: Run tests
+        run: mvn test -B
+        env:
+          DB_PASSWORD: dummy
+          MAIL_USERNAME: dummy@gmail.com
+          MAIL_PASSWORD: dummy
+
+  frontend-check:
+    name: Frontend Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: smartbank-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: smartbank-frontend
+        run: npm ci
+
+      # Check build works without errors
+      - name: Build check
+        working-directory: smartbank-frontend
+        run: npm run build
