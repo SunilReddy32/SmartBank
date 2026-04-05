@@ -1,0 +1,88 @@
+version: '3.8'
+
+# ─────────────────────────────────────────────
+# SmartBank — Full Stack Docker Compose
+# Runs: MySQL + Spring Boot Backend + React Frontend
+# Usage: docker-compose up --build
+# ─────────────────────────────────────────────
+
+services:
+
+  # ── MySQL Database ───────────────────────────
+  smartbank-db:
+    image: mysql:8.0
+    container_name: smartbank-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: smartbank
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - smartbank-db-data:/var/lib/mysql
+    networks:
+      - smartbank-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ── Spring Boot Backend ──────────────────────
+  smartbank-backend:
+    build:
+      context: .         # root folder (where Dockerfile lives)
+      dockerfile: Dockerfile
+    container_name: smartbank-backend
+    restart: unless-stopped
+    depends_on:
+      smartbank-db:
+        condition: service_healthy   # only starts after DB is ready
+    environment:
+      # Override application.properties with Docker network values
+      SPRING_DATASOURCE_URL: jdbc:mysql://smartbank-db:3306/smartbank?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_SHOW_SQL: "false"
+      SMARTBANK_INTEREST_ANNUAL_RATE: "4.0"
+      SMARTBANK_LOAN_ANNUAL_RATE: "10.0"
+    ports:
+      - "9090:9090"
+    networks:
+      - smartbank-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── React Frontend ───────────────────────────
+  smartbank-frontend:
+    build:
+      context: ./smartbank-frontend
+      dockerfile: Dockerfile
+    container_name: smartbank-frontend
+    restart: unless-stopped
+    depends_on:
+      - smartbank-backend  # only starts after backend is ready
+    ports:
+      - "80:80"      # Access frontend at http://localhost
+    networks:
+      - smartbank-network
+
+# ── Volumes ──────────────────────────────────
+volumes:
+  smartbank-db-data:
+    driver: local
+
+# ── Networks ─────────────────────────────────
+networks:
+  smartbank-network:
+    driver: bridge

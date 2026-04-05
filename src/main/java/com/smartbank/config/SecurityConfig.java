@@ -45,7 +45,8 @@ public class SecurityConfig {
                     .requestMatchers(
                             "/auth/**",
                             "/swagger-ui/**",
-                            "/v3/api-docs/**"
+                            "/v3/api-docs/**",
+                            "/actuator/**"
                     ).permitAll()
                     // ✅ /admin/** is locked to ROLE_ADMIN at the URL level
                     .requestMatchers("/admin/**").hasAuthority("ROLE_ADMIN")
