@@ -1,0 +1,9 @@
+# Namespace — logical separation for all SmartBank resources
+# Think of it as a folder inside Kubernetes
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: smartbank
+  labels:
+    app: smartbank
+    environment: production

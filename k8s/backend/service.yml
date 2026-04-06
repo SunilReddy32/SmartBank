@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────
+# Backend Service
+# Exposes the backend pods as a stable network endpoint
+# ClusterIP = only accessible inside the cluster (frontend calls this)
+# ─────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartbank-backend-service
+  namespace: smartbank
+  labels:
+    app: smartbank-backend
+spec:
+  type: ClusterIP        # internal only — not exposed to internet
+  selector:
+    app: smartbank-backend
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP

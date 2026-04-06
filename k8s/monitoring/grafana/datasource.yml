@@ -1,0 +1,17 @@
+# Auto-configures Prometheus as Grafana datasource
+# So you don't have to configure it manually in the UI
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: smartbank
+data:
+  prometheus.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-service:9090
+        access: proxy
+        isDefault: true
+        editable: true

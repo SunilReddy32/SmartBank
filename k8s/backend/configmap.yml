@@ -1,0 +1,20 @@
+# ConfigMap — non-sensitive configuration values
+# Separate from secrets so they can be version controlled safely
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: smartbank-config
+  namespace: smartbank
+data:
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+  SPRING_JPA_SHOW_SQL: "false"
+  SPRING_JPA_OPEN_IN_VIEW: "false"
+  SMARTBANK_INTEREST_ANNUAL_RATE: "4.0"
+  SMARTBANK_LOAN_ANNUAL_RATE: "10.0"
+  SERVER_PORT: "9090"
+  SPRING_MAIL_HOST: "smtp.gmail.com"
+  SPRING_MAIL_PORT: "587"
+  SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+  SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics"
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"

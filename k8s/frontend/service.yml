@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────
+# Frontend Service
+# LoadBalancer type = AWS creates an internet-facing load balancer
+# This gives you a public URL to access your app
+# ─────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartbank-frontend-service
+  namespace: smartbank
+  labels:
+    app: smartbank-frontend
+  annotations:
+    # AWS Load Balancer annotations
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  type: LoadBalancer     # creates AWS Network Load Balancer
+  selector:
+    app: smartbank-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
