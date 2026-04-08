@@ -1,9 +1,3 @@
-# ─────────────────────────────────────────────────────────────
-# Backend Deployment
-# Tells Kubernetes: run 2 copies of the backend container
-# If one crashes, Kubernetes automatically restarts it
-# ─────────────────────────────────────────────────────────────
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -11,98 +5,69 @@ metadata:
   namespace: smartbank
   labels:
     app: smartbank-backend
+
 spec:
-  replicas: 2              # run 2 instances for high availability
+  replicas: 1
+
   selector:
     matchLabels:
       app: smartbank-backend
-  
-  # Rolling update strategy — updates one pod at a time
-  # so the app stays online during deployments
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1          # create 1 extra pod during update
-      maxUnavailable: 0    # never take a pod offline during update
 
   template:
     metadata:
       labels:
         app: smartbank-backend
-      # This annotation tells Prometheus to scrape this pod for metrics
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/path: "/actuator/prometheus"
         prometheus.io/port: "9090"
+
     spec:
       containers:
         - name: smartbank-backend
-          # Replace YOUR_DOCKERHUB_USERNAME with your actual username
           image: sunilreddy32/smartbank-backend:latest
-          imagePullPolicy: Always   # always pull latest image
+          imagePullPolicy: Always
 
           ports:
             - containerPort: 9090
 
-          # Load non-sensitive config from ConfigMap
+          # 🔥 USE CONFIGMAP (IMPORTANT FIX)
           envFrom:
             - configMapRef:
                 name: smartbank-config
 
-          # Load sensitive values from Secret
+          # 🔐 ONLY SENSITIVE VALUES FROM SECRET
           env:
-            - name: DB_USERNAME
+            - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: smartbank-secrets
-                  key: DB_USERNAME
+                  key: SPRING_DATASOURCE_USERNAME
 
-            - name: DB_PASSWORD
+            - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: smartbank-secrets
-                  key: DB_PASSWORD
+                  key: SPRING_DATASOURCE_PASSWORD
 
-            - name: MAIL_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: smartbank-secrets
-                  key: MAIL_USERNAME
-
-            - name: MAIL_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: smartbank-secrets
-                  key: MAIL_PASSWORD
-
-            # RDS endpoint — set after creating RDS instance
-            - name: SPRING_DATASOURCE_URL
-              value: "jdbc:mysql://YOUR_RDS_ENDPOINT:3306/smartbank?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
-
-          # Resource limits — prevent one pod using all node resources
           resources:
             requests:
-              memory: "512Mi"   # guaranteed memory
-              cpu: "250m"       # 0.25 CPU cores guaranteed
+              memory: "512Mi"
+              cpu: "250m"
             limits:
-              memory: "1Gi"     # max memory before pod is killed
-              cpu: "500m"       # max 0.5 CPU cores
+              memory: "1Gi"
+              cpu: "500m"
 
-          # Liveness probe — if this fails, Kubernetes restarts the pod
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 9090
-            initialDelaySeconds: 60   # wait 60s before first check
+            initialDelaySeconds: 60
             periodSeconds: 30
-            failureThreshold: 3
 
-          # Readiness probe — if this fails, pod gets no traffic
-          # but is NOT restarted (it just waits)
           readinessProbe:
             httpGet:
               path: /actuator/health
               port: 9090
             initialDelaySeconds: 45
             periodSeconds: 15
-            failureThreshold: 3
