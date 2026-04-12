@@ -15,11 +15,8 @@ public class CorsConfig {
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // Allow requests from the React frontend (Vite default port)
-        config.setAllowedOrigins(List.of(
-            "http://localhost:5173",
-            "http://localhost:3000"
-        ));
+        // ✅ Allows any origin with any port (works with credentials)
+        config.setAllowedOriginPatterns(List.of("*"));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
