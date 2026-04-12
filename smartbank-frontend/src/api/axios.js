@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://smartbank-backend-service:9090',
+  baseURL: 'http://127.0.0.1:9090',
   headers: { 'Content-Type': 'application/json' },
 })
 
