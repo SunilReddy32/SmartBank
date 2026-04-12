@@ -24,12 +24,9 @@ spec:
             - name: GF_SECURITY_ADMIN_USER
               value: "admin"
             - name: GF_SECURITY_ADMIN_PASSWORD
-              value: "smartbank123"   # change this!
+              value: "smartbank123"
             - name: GF_SERVER_ROOT_URL
               value: "http://localhost:3000"
-            # Auto-configure Prometheus as datasource
-            - name: GF_DATASOURCES_DEFAULT_TYPE
-              value: "prometheus"
           volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
@@ -50,15 +47,17 @@ spec:
             name: grafana-datasources
 
 ---
+# NodePort so you can open Grafana in browser
 apiVersion: v1
 kind: Service
 metadata:
   name: grafana-service
   namespace: smartbank
 spec:
-  type: LoadBalancer    # expose Grafana publicly
+  type: NodePort
   selector:
     app: grafana
   ports:
     - port: 3000
       targetPort: 3000
+      nodePort: 30030

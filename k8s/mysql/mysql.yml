@@ -1,0 +1,75 @@
+# MySQL Database — runs inside Minikube
+# The backend connects to this via: smartbank-mysql-service:3306
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartbank-mysql
+  namespace: smartbank
+  labels:
+    app: smartbank-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smartbank-mysql
+  template:
+    metadata:
+      labels:
+        app: smartbank-mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: DB_PASSWORD
+            - name: MYSQL_DATABASE
+              value: smartbank
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: DB_USERNAME
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: DB_PASSWORD
+          ports:
+            - containerPort: 3306
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 10
+
+---
+# Service — gives MySQL a stable hostname inside the cluster
+# Backend connects using: smartbank-mysql-service:3306
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartbank-mysql-service
+  namespace: smartbank
+spec:
+  type: ClusterIP
+  selector:
+    app: smartbank-mysql
+  ports:
+    - port: 3306
+      targetPort: 3306

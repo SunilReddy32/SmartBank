@@ -5,14 +5,11 @@ metadata:
   namespace: smartbank
   labels:
     app: smartbank-backend
-
 spec:
   replicas: 1
-
   selector:
     matchLabels:
       app: smartbank-backend
-
   template:
     metadata:
       labels:
@@ -21,34 +18,57 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/path: "/actuator/prometheus"
         prometheus.io/port: "9090"
-
     spec:
+      # Wait for MySQL to be ready before starting backend
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z smartbank-mysql-service 3306; do
+                echo "Waiting for MySQL...";
+                sleep 3;
+              done;
+              echo "MySQL is ready!"
       containers:
         - name: smartbank-backend
           image: sunilreddy32/smartbank-backend:latest
           imagePullPolicy: Always
-
           ports:
             - containerPort: 9090
 
-          # 🔥 USE CONFIGMAP (IMPORTANT FIX)
+          # Non-sensitive config from ConfigMap
           envFrom:
             - configMapRef:
                 name: smartbank-config
 
-          # 🔐 ONLY SENSITIVE VALUES FROM SECRET
+          # Sensitive values — names MUST match ${VAR} in application.properties
           env:
-            - name: SPRING_DATASOURCE_USERNAME
+            - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: smartbank-secrets
-                  key: SPRING_DATASOURCE_USERNAME
+                  key: DB_USERNAME
 
-            - name: SPRING_DATASOURCE_PASSWORD
+            - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: smartbank-secrets
-                  key: SPRING_DATASOURCE_PASSWORD
+                  key: DB_PASSWORD
+
+            - name: MAIL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: MAIL_USERNAME
+
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: MAIL_PASSWORD
 
           resources:
             requests:
@@ -58,16 +78,22 @@ spec:
               memory: "1Gi"
               cpu: "500m"
 
+          # Liveness — if this fails 3 times, pod is restarted
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 9090
-            initialDelaySeconds: 60
+            initialDelaySeconds: 150
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
 
+          # Readiness — pod only gets traffic when this passes
           readinessProbe:
             httpGet:
               path: /actuator/health
               port: 9090
-            initialDelaySeconds: 45
+            initialDelaySeconds: 130
             periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
