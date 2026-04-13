@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',  // ✅ relative — nginx proxies this to the backend
+  baseURL: '/api',  // ✅ relative — nginx proxies this to backend
   headers: { 'Content-Type': 'application/json' },
 })
 
