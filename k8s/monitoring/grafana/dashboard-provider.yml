@@ -1,0 +1,22 @@
+# ─────────────────────────────────────────────────────────────
+# Grafana Dashboard Provider — NEW FILE
+# Tells Grafana where to load dashboards from on disk
+# ─────────────────────────────────────────────────────────────
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: smartbank
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'SmartBank Dashboards'
+        orgId: 1
+        folder: 'SmartBank'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards

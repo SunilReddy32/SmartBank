@@ -11,8 +11,8 @@ Write-Host "================================================`n" -ForegroundColor
 Write-Host "[1/8] Starting Minikube with Docker driver..." -ForegroundColor Yellow
 minikube start --driver=docker --cpus=4 --memory=6144 --disk-size=20g
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Minikube failed. Make sure Docker Desktop is running!" -ForegroundColor Red
-    exit 1
+  Write-Host "❌ Minikube failed. Make sure Docker Desktop is running!" -ForegroundColor Red
+  exit 1
 }
 Write-Host "✅ Minikube started`n" -ForegroundColor Green
 

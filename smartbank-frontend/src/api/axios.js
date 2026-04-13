@@ -1,18 +1,16 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://localhost:9090',
+  baseURL: '/api',  // ✅ relative — nginx proxies this to the backend
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach JWT token to every request automatically
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-// If 401/403, clear storage and redirect to login
 api.interceptors.response.use(
   (res) => res,
   (err) => {

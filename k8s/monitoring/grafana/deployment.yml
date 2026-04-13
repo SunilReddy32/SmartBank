@@ -1,3 +1,10 @@
+# ─────────────────────────────────────────────────────────────
+# Grafana — Deployment + Service
+# ✅ FIXED: Changed from LoadBalancer to NodePort (Minikube)
+# ✅ ADDED: Dashboard provisioning (pre-built SmartBank dashboard)
+# Login: admin / smartbank123
+# ─────────────────────────────────────────────────────────────
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,17 +31,21 @@ spec:
             - name: GF_SECURITY_ADMIN_USER
               value: "admin"
             - name: GF_SECURITY_ADMIN_PASSWORD
-              value: "smartbank123"   # change this!
-            - name: GF_SERVER_ROOT_URL
-              value: "http://localhost:3000"
-            # Auto-configure Prometheus as datasource
-            - name: GF_DATASOURCES_DEFAULT_TYPE
-              value: "prometheus"
+              value: "smartbank123"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_PATHS_PROVISIONING
+              value: "/etc/grafana/provisioning"
           volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
             - name: grafana-datasources
               mountPath: /etc/grafana/provisioning/datasources
+            # ✅ ADDED: Dashboard provider + dashboard JSON
+            - name: grafana-dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards
           resources:
             requests:
               memory: "128Mi"
@@ -48,17 +59,30 @@ spec:
         - name: grafana-datasources
           configMap:
             name: grafana-datasources
+        # ✅ ADDED: Dashboard provider ConfigMap
+        - name: grafana-dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        # ✅ ADDED: Dashboard JSON ConfigMap
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboards
 
 ---
+# ── Grafana Service ───────────────────────────
+# ✅ FIXED: NodePort instead of LoadBalancer (Minikube compatible)
 apiVersion: v1
 kind: Service
 metadata:
   name: grafana-service
   namespace: smartbank
+  labels:
+    app: grafana
 spec:
-  type: LoadBalancer    # expose Grafana publicly
+  type: NodePort
   selector:
     app: grafana
   ports:
     - port: 3000
       targetPort: 3000
+      nodePort: 30030 # access at http://$(minikube ip):30030

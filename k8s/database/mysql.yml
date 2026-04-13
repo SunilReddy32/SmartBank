@@ -1,0 +1,107 @@
+# ─────────────────────────────────────────────────────────────
+# MySQL Database — NEW FILE (was missing from your k8s folder)
+# Includes: PersistentVolumeClaim + Deployment + Service
+# ─────────────────────────────────────────────────────────────
+
+# ── Persistent Volume Claim ───────────────────
+# Gives MySQL a disk that survives pod restarts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: smartbank-db-pvc
+  namespace: smartbank
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# ── MySQL Deployment ──────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smartbank-db
+  namespace: smartbank
+  labels:
+    app: smartbank-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smartbank-db
+  template:
+    metadata:
+      labels:
+        app: smartbank-db
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_DATABASE
+              value: "smartbank"
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: DB_PASSWORD
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: DB_USERNAME
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: smartbank-secrets
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: db-storage
+              mountPath: /var/lib/mysql
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "localhost"]
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+      volumes:
+        - name: db-storage
+          persistentVolumeClaim:
+            claimName: smartbank-db-pvc
+
+---
+# ── MySQL Service ─────────────────────────────
+# ClusterIP — only accessible inside the cluster
+# Backend connects via: smartbank-db-service:3306
+apiVersion: v1
+kind: Service
+metadata:
+  name: smartbank-db-service
+  namespace: smartbank
+  labels:
+    app: smartbank-db
+spec:
+  type: ClusterIP
+  selector:
+    app: smartbank-db
+  ports:
+    - port: 3306
+      targetPort: 3306
+      protocol: TCP

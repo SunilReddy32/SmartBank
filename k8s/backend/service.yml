@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 # Backend Service
-# Exposes the backend pods as a stable network endpoint
-# ClusterIP = only accessible inside the cluster (frontend calls this)
+# ClusterIP = internal only (frontend calls this inside cluster)
+# NodePort added so you can also test API directly from browser
 # ─────────────────────────────────────────────────────────────
 
 apiVersion: v1
@@ -12,11 +12,12 @@ metadata:
   labels:
     app: smartbank-backend
 spec:
-  type: ClusterIP        # internal only — not exposed to internet
+  type: NodePort
   selector:
     app: smartbank-backend
   ports:
     - name: http
       port: 9090
       targetPort: 9090
+      nodePort: 30090 # access at http://$(minikube ip):30090
       protocol: TCP

@@ -1,3 +1,50 @@
+# ─────────────────────────────────────────────────────────────
+# Prometheus — Deployment + Service + RBAC
+# ✅ FIXED: Added ServiceAccount + ClusterRole (required for
+#    kubernetes-pods scraping to work)
+# ✅ FIXED: Changed Service to NodePort so you can open UI
+# ─────────────────────────────────────────────────────────────
+
+# ── RBAC: ServiceAccount ──────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: smartbank
+
+---
+# ── RBAC: ClusterRole ────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+
+---
+# ── RBAC: ClusterRoleBinding ─────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: smartbank
+
+---
+# ── Prometheus Deployment ─────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,13 +62,14 @@ spec:
       labels:
         app: prometheus
     spec:
+      serviceAccountName: prometheus # ✅ needed for k8s pod scraping
       containers:
         - name: prometheus
           image: prom/prometheus:latest
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
-            - "--storage.tsdb.retention.time=7d"   # keep 7 days of metrics
+            - "--storage.tsdb.retention.time=7d"
             - "--web.enable-lifecycle"
           ports:
             - containerPort: 9090
@@ -45,15 +93,20 @@ spec:
           emptyDir: {}
 
 ---
+# ── Prometheus Service ────────────────────────
+# ✅ FIXED: NodePort so you can open Prometheus UI in browser
 apiVersion: v1
 kind: Service
 metadata:
   name: prometheus-service
   namespace: smartbank
+  labels:
+    app: prometheus
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: prometheus
   ports:
     - port: 9090
       targetPort: 9090
+      nodePort: 30091 # access at http://$(minikube ip):30091

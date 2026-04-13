@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 # Frontend Service
-# LoadBalancer type = AWS creates an internet-facing load balancer
-# This gives you a public URL to access your app
+# ✅ FIXED: Changed from LoadBalancer (AWS) to NodePort (Minikube)
+# Access via: minikube service smartbank-frontend-service -n smartbank
 # ─────────────────────────────────────────────────────────────
 
 apiVersion: v1
@@ -11,15 +11,13 @@ metadata:
   namespace: smartbank
   labels:
     app: smartbank-frontend
-  annotations:
-    # AWS Load Balancer annotations
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
 spec:
-  type: LoadBalancer     # creates AWS Network Load Balancer
+  type: NodePort # ✅ Works on Minikube (was LoadBalancer/AWS)
   selector:
     app: smartbank-frontend
   ports:
     - name: http
       port: 80
       targetPort: 80
+      nodePort: 30080 # access at http://$(minikube ip):30080
       protocol: TCP
